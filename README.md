@@ -2,6 +2,12 @@
 
 ## How to use
 
+```bash
+cd [project path]/components
+git submodule add https://github.com/xiongyumail/esp_lua
+git submodule add https://github.com/xiongyumail/esp_lua_lib
+```
+
 * partitions.csv
 
 ```csv
