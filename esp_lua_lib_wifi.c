@@ -44,6 +44,13 @@ static void event_handler(void* arg, esp_event_base_t event_base,
     }
 }
 
+static void wifi_deinit_sta() 
+{
+    esp_wifi_stop();
+    esp_wifi_deinit();
+    esp_event_loop_delete_default();
+}
+
 static int wifi_init_sta(char *ssid, char *passwd)
 {
     int ret = -1;
@@ -93,16 +100,23 @@ static int wifi_init_sta(char *ssid, char *passwd)
     ESP_ERROR_CHECK(esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler));
     vEventGroupDelete(s_wifi_event_group);
     if (ret != 0) {
-        esp_wifi_stop();
-        esp_wifi_deinit();
-        esp_event_loop_delete_default();
+        wifi_deinit_sta();
     }
 
     return ret;
 }
 
+static char *get_ip(void)
+{
+    tcpip_adapter_ip_info_t ip_info;
+    tcpip_adapter_get_ip_info(TCPIP_ADAPTER_IF_STA, &ip_info);  
+
+    return ip4addr_ntoa(&ip_info.ip);
+}
+
 static int wifi_init(lua_State *L) 
 {
+    static int state = 0;
     size_t len;
     char *ssid = luaL_checklstring(L, 1, &len);
     char *passwd = luaL_checklstring(L, 2, &len);
@@ -111,22 +125,24 @@ static int wifi_init(lua_State *L)
     } else {
         s_retry_num = 10;
     }
+
+    if (state != 0) {
+        wifi_deinit_sta();
+    }
     
     if (wifi_init_sta(ssid, passwd) == 0) {
-        lua_pushstring(L, "wifi init ok!");
+        lua_pushstring(L, get_ip());
+        state = 1;
         return 1;
     }
 
-    lua_pushstring(L, "wifi init fail!");
+    lua_pushboolean(L, false);
     return 1;
 }
 
 static int wifi_ip(lua_State *L) 
 {
-    tcpip_adapter_ip_info_t ip_info;
-    tcpip_adapter_get_ip_info(TCPIP_ADAPTER_IF_STA, &ip_info);
-
-    lua_pushstring(L, ip4addr_ntoa(&ip_info.ip));
+    lua_pushstring(L, get_ip());
     return 1;
 }
 
@@ -150,7 +166,7 @@ static const luaL_Reg wifilib[] = {
     {NULL, NULL}
 };
 
-int esp_lua_lib_wifi(lua_State *L) 
+LUAMOD_API int esp_lua_lib_wifi(lua_State *L) 
 {
     luaL_newlib(L, wifilib);
     return 1;
