@@ -1,6 +1,6 @@
-set(COMPONENT_SRCS esp_lua_lib_sys.c 
-                   esp_lua_lib_wifi.c
-                   esp_lua_lib_web.c)
+set(COMPONENT_SRCS esp_lib/esp_lua_lib_sys.c 
+                   esp_lib/esp_lua_lib_wifi.c
+                   esp_lib/esp_lua_lib_web.c)
 
 set(COMPONENT_ADD_INCLUDEDIRS include)
 
