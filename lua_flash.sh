@@ -15,7 +15,7 @@ fi
 if [ ! -n "$BIN_SIZE" ] ;then
     BIN_SIZE="0x1f0000"
 fi
-echo "Choose old or new files(0=old, 1=new, 2=user)"
+echo "Choose new or old files(0=user, 1=new, 2=old)"
 echo "enter (0/1/2, default 0):"
 read input
 
@@ -26,16 +26,16 @@ if [ "$input" == 1 ]; then
     fi
     cp -r components/esp_lua_lib/lua_lib lua
 elif [ "$input" == 2 ]; then
+    echo "read files from flash"
+    esptool.py -p $PORT -b $BAUD read_flash $BIN_ADDR $BIN_SIZE lua.bin
+    ./components/esp_lua_lib/mkspiffs -u lua lua.bin
+else 
     if [ -d "lua" ]; then
         echo "user lua files"
     else
         echo "Directory ./lua does not exists."
         exit 1
     fi
-else 
-    echo "read files from flash"
-    esptool.py -p $PORT -b $BAUD read_flash $BIN_ADDR $BIN_SIZE lua.bin
-    ./components/esp_lua_lib/mkspiffs -u lua lua.bin
 fi
 
 echo "Choose flash or exit(0=all, 1=app, 2=exit)"
