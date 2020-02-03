@@ -19,57 +19,29 @@ static const char *TAG = "esp_lua_lib_web";
 
 #define DEFAULT_HTTP_RECV_BUFFER 512
 
-esp_err_t _http_event_handler(esp_http_client_event_t *evt)
-{
-    switch(evt->event_id) {
-        case HTTP_EVENT_ERROR:
-            ESP_LOGD(TAG, "HTTP_EVENT_ERROR");
-            break;
-        case HTTP_EVENT_ON_CONNECTED:
-            ESP_LOGD(TAG, "HTTP_EVENT_ON_CONNECTED");
-            break;
-        case HTTP_EVENT_HEADER_SENT:
-            ESP_LOGD(TAG, "HTTP_EVENT_HEADER_SENT");
-            break;
-        case HTTP_EVENT_ON_HEADER:
-            ESP_LOGD(TAG, "HTTP_EVENT_ON_HEADER, key=%s, value=%s", evt->header_key, evt->header_value);
-            break;
-        case HTTP_EVENT_ON_DATA:
-            ESP_LOGD(TAG, "HTTP_EVENT_ON_DATA, len=%d", evt->data_len);
-            break;
-        case HTTP_EVENT_ON_FINISH:
-            ESP_LOGD(TAG, "HTTP_EVENT_ON_FINISH");
-            break;
-        case HTTP_EVENT_DISCONNECTED:
-            ESP_LOGI(TAG, "HTTP_EVENT_DISCONNECTED");
-            int mbedtls_err = 0;
-            esp_err_t err = esp_tls_get_and_clear_last_error(evt->data, &mbedtls_err, NULL);
-            if (err != 0) {
-                ESP_LOGI(TAG, "Last esp error code: 0x%x", err);
-                ESP_LOGI(TAG, "Last mbedtls failure: 0x%x", mbedtls_err);
-            }
-            break;
-    }
-    return ESP_OK;
-}
-
 static int http_rest_get_with_url(char *url, char *buf, size_t len)
 {
     esp_http_client_config_t config = {
         .url = url,
-        .event_handler = _http_event_handler,
     };
     esp_http_client_handle_t client = esp_http_client_init(&config);
     esp_err_t err;
     if ((err = esp_http_client_open(client, 0)) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to open HTTP connection: %s", esp_err_to_name(err));
+        esp_http_client_cleanup(client);
         return -1;
     }
     int content_length =  esp_http_client_fetch_headers(client);
-    content_length = (content_length <= len) ? content_length: len;
+    if (content_length <= 0) {
+        ESP_LOGE(TAG, "Error content length");
+        esp_http_client_cleanup(client);
+        return -1;
+    }
+    content_length = (content_length < len) ? content_length: len - 1;
     int read_len = esp_http_client_read(client, buf, content_length);
     if (read_len <= 0) {
         ESP_LOGE(TAG, "Error read data");
+        esp_http_client_cleanup(client);
         return -1;
     }
     buf[read_len] = 0;
@@ -86,7 +58,6 @@ static int http_rest_post_with_url(char *url, char *post, char *buf, size_t len)
 {
     esp_http_client_config_t config = {
         .url = url,
-        .event_handler = _http_event_handler,
     };
     esp_http_client_handle_t client = esp_http_client_init(&config);
     esp_http_client_set_method(client, HTTP_METHOD_POST);
@@ -94,13 +65,15 @@ static int http_rest_post_with_url(char *url, char *post, char *buf, size_t len)
     esp_err_t err;
     if ((err = esp_http_client_open(client, 0)) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to open HTTP connection: %s", esp_err_to_name(err));
+        esp_http_client_cleanup(client);
         return -1;
     }
     int content_length =  esp_http_client_fetch_headers(client);
-    content_length = (content_length <= len) ? content_length: len;
+    content_length = (content_length < len) ? content_length: len - 1;
     int read_len = esp_http_client_read(client, buf, content_length);
     if (read_len <= 0) {
         ESP_LOGE(TAG, "Error read data");
+        esp_http_client_cleanup(client);
         return -1;
     }
     buf[read_len] = 0;
