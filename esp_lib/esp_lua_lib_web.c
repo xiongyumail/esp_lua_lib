@@ -17,7 +17,7 @@
 
 static const char *TAG = "esp_lua_lib_web";
 
-#define DEFAULT_HTTP_RECV_BUFFER 512
+#define DEFAULT_HTTP_RECV_BUFFER 4096
 
 static int http_rest_get_with_url(char *url, char *buf, size_t len)
 {
@@ -52,6 +52,79 @@ static int http_rest_get_with_url(char *url, char *buf, size_t len)
     esp_http_client_cleanup(client);
 
     return 0;
+}
+
+static int http_rest_file_with_url(char *url, char *file)
+{
+    esp_http_client_config_t config = {
+        .url = url,
+    };
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    esp_err_t err;
+    if ((err = esp_http_client_open(client, 0)) != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open HTTP connection: %s", esp_err_to_name(err));
+        esp_http_client_cleanup(client);
+        return -1;
+    }
+    int content_length =  esp_http_client_fetch_headers(client);
+    if (content_length <= 0) {
+        ESP_LOGE(TAG, "Error content length");
+        esp_http_client_cleanup(client);
+        return -1;
+    }
+    FILE* f = fopen(file, "w");
+    if (f == NULL) {
+        ESP_LOGE(TAG, "Failed to open file for writing");
+        esp_http_client_cleanup(client);
+        return -1;
+    }
+    char *buf = calloc(sizeof(char), DEFAULT_HTTP_RECV_BUFFER);
+    int read_len = 0;
+    int write_len = 0;
+    for (int x = 0; x < content_length / DEFAULT_HTTP_RECV_BUFFER; x++) {
+        read_len = esp_http_client_read(client, buf, DEFAULT_HTTP_RECV_BUFFER);
+        if (read_len != DEFAULT_HTTP_RECV_BUFFER) {
+            ESP_LOGE(TAG, "Error read data");
+            esp_http_client_cleanup(client);
+            fclose(f);
+            free(buf);
+            return -1;
+        }
+        write_len = fwrite(buf, sizeof(char), read_len, f);
+        if (write_len != DEFAULT_HTTP_RECV_BUFFER) {
+            ESP_LOGE(TAG, "File write data");
+            esp_http_client_cleanup(client);
+            fclose(f);
+            free(buf);
+            return -1;
+        }
+    }
+    if (content_length % DEFAULT_HTTP_RECV_BUFFER) {
+        read_len = esp_http_client_read(client, buf, content_length % DEFAULT_HTTP_RECV_BUFFER);
+        if (read_len <= 0) {
+            ESP_LOGE(TAG, "Error read data");
+            esp_http_client_cleanup(client);
+            fclose(f);
+            free(buf);
+            return -1;
+        }
+        write_len = fwrite(buf, sizeof(char), read_len, f);
+        if (write_len <= 0) {
+            ESP_LOGE(TAG, "File write data");
+            esp_http_client_cleanup(client);
+            fclose(f);
+            free(buf);
+            return -1;
+        }
+    }
+
+    ESP_LOGI(TAG, "HTTP Stream reader Status = %d, content_length = %d",
+                    esp_http_client_get_status_code(client),
+                    esp_http_client_get_content_length(client));
+    esp_http_client_cleanup(client);
+    fclose(f);
+    free(buf);
+    return content_length;
 }
 
 static int http_rest_post_with_url(char *url, char *post, char *buf, size_t len)
@@ -265,9 +338,28 @@ static int web_mqtt(lua_State *L)
     return 1;
 }
 
+static int web_file(lua_State *L) 
+{
+    int ret = -1;
+
+    char *file = luaL_checklstring(L, 1, NULL);
+    char *url = luaL_checklstring(L, 2, NULL);
+
+    ret = http_rest_file_with_url(url, file);
+
+    if (ret >= 0) {
+        lua_pushinteger(L, ret);
+    } else {
+        lua_pushboolean(L, false);
+    }
+    
+    return 1;
+}
+
 static const luaL_Reg weblib[] = {
     {"rest",   web_rest},
     {"mqtt",   web_mqtt},
+    {"file",   web_file},
     {NULL, NULL}
 };
 

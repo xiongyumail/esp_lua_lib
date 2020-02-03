@@ -20,7 +20,7 @@ static int sys_init(lua_State *L)
         lua_pushboolean(L, true);
         return 1;
     }
-    esp_log_level_set("*", ESP_LOG_NONE);
+    esp_log_level_set("*", ESP_LOG_ERROR);
     //Initialize NVS
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -61,6 +61,8 @@ static int sys_init(lua_State *L)
     }
 
     linenoiseHistoryLoad(ESP_LUA_HISTORY_PATH);
+
+    state = 1;
 
     lua_pushboolean(L, true);
     return 1;
@@ -138,14 +140,9 @@ static int sys_heap(lua_State *L)
     return 1;
 }
 
-static int sys_test(lua_State *L) 
+static int sys_restart(lua_State *L) 
 {
-    char *func = lua_tostring(L, 1);
-    lua_getglobal(L, func);
-	lua_pushinteger(L, 10);
-    lua_pushinteger(L, 21);
-    lua_pcall(L, 2, 0, 0);
-    // lua_pushinteger(L, esp_get_free_heap_size());
+    esp_restart();
     return 0;
 }
 
@@ -154,7 +151,7 @@ static const luaL_Reg syslib[] = {
     {"delay", sys_delay},
     {"sntp", sys_sntp},
     {"heap", sys_heap},
-    {"test", sys_test},
+    {"restart", sys_restart},
     {NULL, NULL}
 };
 

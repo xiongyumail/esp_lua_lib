@@ -48,9 +48,11 @@ static void event_handler(void* arg, esp_event_base_t event_base,
 
 static void wifi_deinit_sta() 
 {
+    s_retry_num = 0;
     esp_wifi_stop();
     esp_wifi_deinit();
     esp_event_loop_delete_default();
+    vEventGroupDelete(s_wifi_event_group);
 }
 
 static int wifi_init_sta(char *ssid, char *passwd)
