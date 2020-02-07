@@ -4,6 +4,6 @@ set(COMPONENT_SRCS esp_lib/esp_lua_lib_sys.c
 
 set(COMPONENT_ADD_INCLUDEDIRS include)
 
-set(COMPONENT_REQUIRES esp_lua nvs_flash spiffs esp_http_client esp-tls mqtt)
+set(COMPONENT_REQUIRES esp_lua nvs_flash spiffs esp_http_client esp-tls mqtt app_update esp_https_ota)
 
 register_component()

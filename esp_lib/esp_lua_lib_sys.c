@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <time.h>
@@ -10,6 +11,7 @@
 #include "esp_log.h"
 #include "esp_lua_lib.h"
 #include "esp_sntp.h"
+#include "esp_task_wdt.h"
 
 static const char *TAG = "esp_lua_lib_sys";
 
@@ -60,6 +62,8 @@ static int sys_init(lua_State *L)
         ESP_LOGI(TAG, "Partition size: total: %d, used: %d", total, used);
     }
 
+    esp_task_wdt_init(5, true);
+
     linenoiseHistoryLoad(ESP_LUA_HISTORY_PATH);
 
     state = 1;
@@ -95,13 +99,12 @@ static void initialize_sntp(char *url)
 static int sys_sntp(lua_State *L) 
 {
     static int state = 0;
-    size_t len;
 
     if (state != 0) {
         sntp_stop();
     }
     if (lua_gettop(L) >= 1) {
-        initialize_sntp(luaL_checklstring(L, 1, &len));
+        initialize_sntp(luaL_checklstring(L, 1, NULL));
     } else {
         initialize_sntp("pool.ntp.org");
     }
@@ -142,8 +145,79 @@ static int sys_heap(lua_State *L)
 
 static int sys_restart(lua_State *L) 
 {
+    linenoiseHistorySave(ESP_LUA_HISTORY_PATH);
     esp_restart();
     return 0;
+}
+
+#include "esp32/rom/md5_hash.h"
+
+static int md5_sum(const char *file, char *md5sum)
+{
+    unsigned char digest[17];
+    int i;
+    struct MD5Context md5_ctx;
+
+    FILE* f = fopen(file, "r");
+    if (f == NULL) {
+        ESP_LOGE(TAG, "Failed to open file for writing");
+        return -1;
+    }
+    char *buf = calloc(sizeof(char), BUFSIZ);
+    int read_len = 0;
+    MD5Init(&md5_ctx);
+    while (!feof(f)) {
+        read_len = fread(buf, sizeof(char), BUFSIZ, f);
+        MD5Update(&md5_ctx, (const unsigned char *)buf, read_len);
+    }
+    fclose(f);
+    free(buf);
+    MD5Final(digest, &md5_ctx);
+
+    for (i = 0; i < 16; i++) {
+        sprintf(&(md5sum[i * 2]), "%02x", (unsigned int)digest[i]);
+    }
+    return 0;
+}
+
+static int sys_md5sum(lua_State *L) 
+{
+    char *file = luaL_checklstring(L, 1, NULL);
+    char *md5sum = calloc(sizeof(char), 64);
+    if (md5_sum(file, md5sum) == 0) {
+        lua_pushstring(L, md5sum);
+    } else {
+        lua_pushboolean(L, false);
+    }
+    free(md5sum);
+    return 1;
+}
+
+#include "esp_ota_ops.h"
+
+static int sys_version(lua_State *L) 
+{
+    esp_app_desc_t running_app_info;
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    if (esp_ota_get_partition_description(running, &running_app_info) == ESP_OK) {
+        lua_pushstring(L, running_app_info.version);
+    } else {
+        lua_pushboolean(L, false);
+    }
+    return 1;
+}
+
+static int sys_spiffs_info(lua_State *L) 
+{
+    size_t total = 0, used = 0;
+    if (esp_spiffs_info(NULL, &total, &used) != ESP_OK) {
+        lua_pushboolean(L, false);
+        return 1;
+    } else {
+        lua_pushinteger(L, used);
+        lua_pushinteger(L, total);
+        return 2;
+    }
 }
 
 static const luaL_Reg syslib[] = {
@@ -152,6 +226,9 @@ static const luaL_Reg syslib[] = {
     {"sntp", sys_sntp},
     {"heap", sys_heap},
     {"restart", sys_restart},
+    {"md5sum", sys_md5sum},
+    {"version", sys_version},
+    {"spiffs_info", sys_spiffs_info},
     {NULL, NULL}
 };
 
