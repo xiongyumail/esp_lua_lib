@@ -30,9 +30,11 @@ storage,  data, spiffs,  0x300000,0x100000,
 static const char *TAG = "main";
 
 static const luaL_Reg mylibs[] = {
-    {"sys", esp_lua_lib_sys},
-    {"wifi", esp_lua_lib_wifi},
-    {"web", esp_lua_lib_web},
+    {"sys", esp_lib_sys},
+    {"net", esp_lib_net},
+    {"web", esp_lib_web},
+    {"mqtt", esp_lib_mqtt},
+    {"httpd", esp_lib_httpd},
     {NULL, NULL}
 };
 
@@ -65,5 +67,5 @@ void app_main()
 * Generate spiffs bin and flash
 
 ```bash
-./components/esp_lua_lib/lua_flash.sh
+./components/esp_lua_lib/tools/lua_flash.sh
 ```
