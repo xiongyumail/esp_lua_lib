@@ -1,9 +1,11 @@
+local dump = { _version = "0.1.0" }
+
 ---
 -- @function: 获取table的字符串格式内容，递归
 -- @tab： table
 -- @ind：不用传此参数，递归用（前缀格式（空格））
 -- @return: format string of the table
-function dumpTab(tab,ind)
+function dump.table(tab,ind)
     if(tab==nil)then return "nil" end;
     local str="{";
     if(ind==nil)then ind="  "; end;
@@ -26,7 +28,7 @@ function dumpTab(tab,ind)
       elseif(type(v)=="string")then
         s="\""..v.."\"";
       elseif(type(v)=="table")then
-        s=dumpTab(v,ind.."  ");
+        s=dump.table(v,ind.."  ");
         s=string.sub(s,1,#s-1);
       elseif(type(v)=="function")then
         s="function : "..v;
@@ -46,36 +48,13 @@ function dumpTab(tab,ind)
     sss=sss.."\n"..ind.."}\n";
     return sss;--string.sub(str,1,#str-1).."\n"..ind.."}\n";
   end;--//end function
-  
-  --//网摘,直接打印到屏幕
-  function printTable(t, n)
-    if "table" ~= type(t) then
-      return 0;
+
+function dump.uri(uri)
+    local t = {}
+    for key, value in string.gmatch(uri, '(%w+)=(%w+)') do
+        t[key] = value
     end
-    n = n or 0;
-    local str_space = "";
-    for i = 1, n do
-      str_space = str_space.."  ";
-    end
-    print(str_space.."{");
-    for k, v in pairs(t) do
-      local str_k_v
-      if(type(k)=="string")then
-        str_k_v = str_space.."  "..tostring(k).." = ";
-      else
-        str_k_v = str_space.."  ["..tostring(k).."] = ";
-      end
-      if "table" == type(v) then
-        print(str_k_v);
-        printTable(v, n + 1);
-      else
-        if(type(v)=="string")then
-          str_k_v = str_k_v.."\""..tostring(v).."\"";
-        else
-          str_k_v = str_k_v..tostring(v);
-        end
-        print(str_k_v);
-      end
-    end
-    print(str_space.."}");
-  end
+    return t
+end
+
+return dump

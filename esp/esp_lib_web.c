@@ -12,10 +12,9 @@
 #include "esp_tls.h"
 
 #include "esp_http_client.h"
-#include "mqtt_client.h"
 #include "esp_lua_lib.h"
 
-static const char *TAG = "esp_lua_lib_web";
+static const char *TAG = "esp_lib_web";
 
 static char *http_rest_get_with_url(char *url, char * cert_pem)
 {
@@ -200,148 +199,6 @@ static int web_rest(lua_State *L)
     return 1;
 }
 
-static esp_mqtt_client_handle_t client = NULL;
-static QueueHandle_t mqtt_event_queue = NULL;
-
-typedef struct {
-    char *event;
-    char *data;
-} mqtt_event_t;
-
-static int mqtt_event_send(char *event, char *data)
-{
-    mqtt_event_t e;
-    e.event = calloc(sizeof(char), strlen(event) + 1);
-    e.data = calloc(sizeof(char), strlen(data) + 1);
-    strcpy(e.event, event);
-    strcpy(e.data, data);
-    if (xQueueSend(mqtt_event_queue, (void *)&e, 0) != pdTRUE) {
-        free(e.event);
-        free(e.data);
-        return -1;
-    }
-    return 0;
-}
-
-static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
-{
-    esp_mqtt_client_handle_t client = event->client;
-    char msg_id_str[16] = "";
-    sprintf(msg_id_str, "%d", event->msg_id);
-    switch (event->event_id) {
-        case MQTT_EVENT_CONNECTED:
-            ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
-            mqtt_event_send("MQTT_EVENT_CONNECTED", "");
-            break;
-        case MQTT_EVENT_DISCONNECTED:
-            ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
-            mqtt_event_send("MQTT_EVENT_DISCONNECTED", "");
-            break;
-        case MQTT_EVENT_SUBSCRIBED:
-            ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
-            
-            mqtt_event_send("MQTT_EVENT_SUBSCRIBED", msg_id_str);
-            break;
-        case MQTT_EVENT_UNSUBSCRIBED:
-            ESP_LOGI(TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
-            mqtt_event_send("MQTT_EVENT_UNSUBSCRIBED", msg_id_str);
-            break;
-        case MQTT_EVENT_PUBLISHED:
-            ESP_LOGI(TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
-            mqtt_event_send("MQTT_EVENT_PUBLISHED", msg_id_str);
-            break;
-        case MQTT_EVENT_DATA:
-            ESP_LOGI(TAG, "MQTT_EVENT_DATA");
-            char *data = calloc(sizeof(char), event->topic_len + event->data_len + 100);
-            sprintf(data, "{\"topic\":\"%.*s\",\"data\":%.*s}", event->topic_len, event->topic, event->data_len, event->data);
-            mqtt_event_send("MQTT_EVENT_DATA", data);
-            free(data);
-            break;
-        case MQTT_EVENT_ERROR:
-            ESP_LOGI(TAG, "MQTT_EVENT_ERROR");
-            mqtt_event_send("MQTT_EVENT_ERROR", "");
-            break;
-        default:
-            ESP_LOGI(TAG, "Other event id:%d", event->event_id);
-            break;
-    }
-    return ESP_OK;
-}
-
-static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data) {
-    ESP_LOGD(TAG, "Event dispatched from event loop base=%s, event_id=%d", base, event_id);
-    mqtt_event_handler_cb(event_data);
-}
-
-static int mqtt_app_start(char *url, void *context)
-{
-    esp_mqtt_client_config_t mqtt_cfg = {
-        .uri = url,
-        .user_context = context,
-    };
-
-    client = esp_mqtt_client_init(&mqtt_cfg);
-    esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, client);
-    esp_mqtt_client_start(client);
-
-    return 0;
-}
-
-/*
-function mqtt_event_callback(event, data)
-    print('event: '..event..' data: '..data)
-end
-
-web.mqtt('START', 'mqtt://mqtt.emake.run', 100)
-web.mqtt('SUB', 'topic', 0)
-web.mqtt('PUB', 'topic', 'data', 0)
-web.mqtt('UNSUB', 'topic')
-web.mqtt('STOP')
-*/
-static int web_mqtt(lua_State *L) 
-{
-    int ret = -1;
-    char *method = luaL_checklstring(L, 1, NULL);
-    static int state = 0;
-
-    if (strcmp(method, "START") == 0) {
-        if (state != 0) {
-            esp_mqtt_client_stop(client);
-            vQueueDelete(mqtt_event_queue);
-            state = 0;
-        }
-        mqtt_event_queue = xQueueCreate(luaL_checkinteger(L, 3), sizeof(mqtt_event_t));
-        ret = mqtt_app_start(luaL_checklstring(L, 2, NULL), (void*)L);
-        state = 1;
-    } else if (strcmp(method, "SUB") == 0) {
-        ret = esp_mqtt_client_subscribe(client, luaL_checklstring(L, 2, NULL), luaL_checkinteger(L, 3));
-    } else if (strcmp(method, "PUB") == 0) {
-        ret = esp_mqtt_client_publish(client, luaL_checklstring(L, 2, NULL), luaL_checklstring(L, 3, NULL), 0, luaL_checkinteger(L, 4), 0);
-    } else if (strcmp(method, "UNSUB") == 0) {
-        ret = esp_mqtt_client_unsubscribe(client, luaL_checklstring(L, 2, NULL));
-    } else if (strcmp(method, "STOP") == 0) {
-        ret = esp_mqtt_client_stop(client);
-        vQueueDelete(mqtt_event_queue);
-        state = 0;
-    } else if (strcmp(method, "HANDLE") == 0) {
-        mqtt_event_t e;
-        if (state && xQueueReceive(mqtt_event_queue, (void *)&e, luaL_checkinteger(L, 2) / portTICK_RATE_MS) == pdTRUE) {
-            lua_pushstring(L, e.event);
-            lua_pushstring(L, e.data);
-            free(e.event);
-            free(e.data);
-            return 2;
-        } else {
-            ret = -1;
-        }
-    } else { 
-        ret = -1;
-    }
-
-    lua_pushboolean(L, (ret >=0) ? true : false);
-    return 1;
-}
-
 static int web_file(lua_State *L) 
 {
     int ret = -1;
@@ -405,14 +262,15 @@ static int web_ota(lua_State *L)
 
 static const luaL_Reg weblib[] = {
     {"rest",   web_rest},
-    {"mqtt",   web_mqtt},
     {"file",   web_file},
     {"ota",    web_ota},
     {NULL, NULL}
 };
 
-LUAMOD_API int esp_lua_lib_web(lua_State *L) 
+LUAMOD_API int esp_lib_web(lua_State *L) 
 {
     luaL_newlib(L, weblib);
+    lua_pushstring(L, "0.1.0");
+    lua_setfield(L, -2, "_version");
     return 1;
 }
