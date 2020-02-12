@@ -14,9 +14,9 @@ function wifi.start_ap(ssid, passwd)
             if (handle.uri == '/config') then
                 local t = dump.uri(handle.data)
                 if (t.ssid and t.password) then
-                    httpd.stop()
                     net.sta(t.ssid, t.password)
                     if (net.start('STA')) then
+                        httpd.stop()
                         sys.nvs_write('wifi', 'ssid', t.ssid)
                         sys.nvs_write('wifi', 'passwd', t.password)
                         break
