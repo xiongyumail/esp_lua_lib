@@ -40,19 +40,26 @@ else
     fi
 fi
 
-echo "Choose flash or exit(0=all, 1=app)"
-echo "enter (0/1, default 0):"
+echo "Choose flash or exit(0=lua, 1=all, 2=app)"
+echo "enter (0/1/2, default 0):"
 read input
 
 if [ "$input" == 1 ]; then
-    echo "flash app"
-    idf.py -p $PORT -b $BAUD build flash monitor
-else
     echo "copy main.lua"
-    cp main/main.lua lua
+    cp main/*.lua lua
     ./$ESP_LUA_LIB_PATH/tools/mkspiffs -c lua -b 4096 -p 256 -s $BIN_SIZE lua.bin
     echo "flash spiffs bin and app"
     esptool.py -p $PORT -b $BAUD write_flash $BIN_ADDR lua.bin
     idf.py -p $PORT -b $BAUD build flash monitor
+elif [ "$input" == 2 ]; then
+    echo "flash app"
+    idf.py -p $PORT -b $BAUD build flash monitor
+else
+    echo "copy main.lua"
+    cp main/*.lua lua
+    ./$ESP_LUA_LIB_PATH/tools/mkspiffs -c lua -b 4096 -p 256 -s $BIN_SIZE lua.bin
+    echo "flash spiffs bin and app"
+    esptool.py -p $PORT -b $BAUD write_flash $BIN_ADDR lua.bin
+    idf.py -p $PORT -b $BAUD monitor
 fi
 exit 0
