@@ -35,10 +35,17 @@ function wifi.start_ap(ssid, passwd)
 end
 
 function wifi.start_sta(ssid, passwd)
-    if (not(ssid and passwd)) then
-        ssid = sys.nvs_read('wifi', 'ssid')
-        passwd = sys.nvs_read('wifi', 'passwd')
+    if (ssid and passwd) then
+        net.sta(ssid, passwd)
+        if (net.start('STA')) then
+            sys.nvs_write('wifi', 'ssid', ssid)
+            sys.nvs_write('wifi', 'passwd', passwd)
+            return true
+        end
     end
+    
+    ssid = sys.nvs_read('wifi', 'ssid')
+    passwd = sys.nvs_read('wifi', 'passwd')
     
     if (ssid and passwd) then
         net.sta(ssid, passwd)
