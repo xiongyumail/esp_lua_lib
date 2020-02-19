@@ -16,6 +16,13 @@
 
 static const char *TAG = "esp_lib_web";
 
+#if CONFIG_ESP32_SPIRAM_SUPPORT
+#define MAX_STR_SIZE    (200*1024) // 200 KB
+#else
+#define MAX_STR_SIZE    (20*1024) // 20 KB
+#endif
+#define MAX_FILE_SIZE   (200*1024) // 200 KB
+
 static char *http_rest_get_with_url(char *url, char * cert_pem)
 {
     esp_http_client_config_t config = {
@@ -30,10 +37,8 @@ static char *http_rest_get_with_url(char *url, char * cert_pem)
         return NULL;
     }
     int content_length =  esp_http_client_fetch_headers(client);
-    if (content_length <= 0) {
-        ESP_LOGE(TAG, "Error content length");
-        esp_http_client_cleanup(client);
-        return NULL;
+    if (content_length <= 0 || content_length > MAX_STR_SIZE) {
+        content_length = MAX_STR_SIZE;
     }
     char *buf = calloc(sizeof(char), content_length + 1);
     int read_len = esp_http_client_read(client, buf, content_length);
@@ -67,10 +72,8 @@ static int http_rest_file_with_url(char *url, char *file, char * cert_pem)
         return -1;
     }
     int content_length =  esp_http_client_fetch_headers(client);
-    if (content_length <= 0) {
-        ESP_LOGE(TAG, "Error content length");
-        esp_http_client_cleanup(client);
-        return -1;
+    if (content_length <= 0 || content_length > MAX_FILE_SIZE) {
+        content_length = MAX_FILE_SIZE;
     }
     FILE* f = fopen(file, "w");
     if (f == NULL) {
@@ -81,40 +84,37 @@ static int http_rest_file_with_url(char *url, char *file, char * cert_pem)
     char *buf = calloc(sizeof(char), BUFSIZ);
     int read_len = 0;
     int write_len = 0;
-    for (int x = 0; x < content_length / BUFSIZ; x++) {
+    int x = 0;
+    for (x = 0; x < content_length / BUFSIZ; x++) {
         read_len = esp_http_client_read(client, buf, BUFSIZ);
-        if (read_len != BUFSIZ) {
-            ESP_LOGE(TAG, "Error read data");
+        if (read_len <= 0) {
             esp_http_client_cleanup(client);
             fclose(f);
             free(buf);
-            return -1;
+            return BUFSIZ * x;
         }
         write_len = fwrite(buf, sizeof(char), read_len, f);
         if (write_len != BUFSIZ) {
-            ESP_LOGE(TAG, "File write data");
             esp_http_client_cleanup(client);
             fclose(f);
             free(buf);
-            return -1;
+            return BUFSIZ * x + write_len;
         }
     }
     if (content_length % BUFSIZ) {
         read_len = esp_http_client_read(client, buf, content_length % BUFSIZ);
-        if (read_len != content_length % BUFSIZ) {
-            ESP_LOGE(TAG, "Error read data");
+        if (read_len <= 0) {
             esp_http_client_cleanup(client);
             fclose(f);
             free(buf);
-            return -1;
+            return BUFSIZ * x;
         }
         write_len = fwrite(buf, sizeof(char), read_len, f);
-        if (write_len <= 0) {
-            ESP_LOGE(TAG, "File write data");
+        if (write_len != (content_length % BUFSIZ)) {
             esp_http_client_cleanup(client);
             fclose(f);
             free(buf);
-            return -1;
+            return BUFSIZ * x + write_len;
         }
     }
 
