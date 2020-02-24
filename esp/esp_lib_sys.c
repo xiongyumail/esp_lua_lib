@@ -388,8 +388,12 @@ static int sys_info(lua_State *L)
 {
     lua_newtable(L);
 
-    lua_pushstring(L, "heap");
+    lua_pushstring(L, "total_heap");
     lua_pushinteger(L, esp_get_free_heap_size());
+    lua_settable(L,-3);
+
+    lua_pushstring(L, "heap");
+    lua_pushinteger(L, heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     lua_settable(L,-3);
 
     int boot_count = get_boot_count();
