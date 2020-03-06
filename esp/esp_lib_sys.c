@@ -191,8 +191,9 @@ static int save_boot_count(void)
 static int sys_init(lua_State *L) 
 {
     static int state = 0;
+    int boot_count = -1;
     if (state != 0) {
-        int boot_count = get_boot_count();
+        boot_count = save_boot_count();
         if (boot_count != -1) {
             lua_pushinteger(L, boot_count);
         } else {
@@ -248,7 +249,7 @@ static int sys_init(lua_State *L)
 
     state = 1;
 
-    int boot_count = save_boot_count();
+    boot_count = save_boot_count();
 
     if (boot_count != -1) {
         lua_pushinteger(L, boot_count);
@@ -262,6 +263,7 @@ static int sys_init(lua_State *L)
 static int sys_delay(lua_State *L) 
 {
     uint32_t delay = (uint32_t)luaL_checknumber(L,1);
+    lua_gc(L, LUA_GCCOLLECT, 0); // collect memory
     vTaskDelay(delay / portTICK_RATE_MS);
     lua_pushboolean(L, true);
     return 1;
@@ -270,6 +272,7 @@ static int sys_delay(lua_State *L)
 static int sys_yield(lua_State *L) 
 {
     // portYIELD();
+    lua_gc(L, LUA_GCCOLLECT, 0); // collect memory
     vTaskDelay(10 / portTICK_RATE_MS);
     lua_pushboolean(L, true);
     return 1;
