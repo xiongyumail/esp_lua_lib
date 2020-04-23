@@ -16,13 +16,6 @@
 
 static const char *TAG = "esp_lib_web";
 
-#if CONFIG_ESP32_SPIRAM_SUPPORT
-#define MAX_STR_SIZE    (200*1024) // 200 KB
-#else
-#define MAX_STR_SIZE    (20*1024) // 20 KB
-#endif
-#define MAX_FILE_SIZE   (200*1024) // 200 KB
-
 static char *http_rest_get_with_url(char *url, char * cert_pem)
 {
     esp_http_client_config_t config = {
@@ -37,8 +30,8 @@ static char *http_rest_get_with_url(char *url, char * cert_pem)
         return NULL;
     }
     int content_length =  esp_http_client_fetch_headers(client);
-    if (content_length <= 0 || content_length > MAX_STR_SIZE) {
-        content_length = MAX_STR_SIZE;
+    if (content_length <= 0 || content_length > ESP_LUA_MAX_STR_SIZE) {
+        content_length = ESP_LUA_MAX_STR_SIZE;
     }
     char *buf = calloc(sizeof(char), content_length + 1);
     int read_len = esp_http_client_read(client, buf, content_length);
@@ -72,9 +65,30 @@ static int http_rest_file_with_url(char *url, char *file, char * cert_pem)
         return -1;
     }
     int content_length =  esp_http_client_fetch_headers(client);
-    if (content_length <= 0 || content_length > MAX_FILE_SIZE) {
-        content_length = MAX_FILE_SIZE;
+    if (content_length <= 0 || content_length > ESP_LUA_MAX_FILE_SIZE) {
+        content_length = ESP_LUA_MAX_FILE_SIZE;
     }
+
+    if (strncmp(file, ESP_LUA_RAM_FILE_PATH, strlen(ESP_LUA_RAM_FILE_PATH)) == 0) {
+        esp_lua_ramf_t *ramf = (esp_lua_ramf_t *)atoi(&file[strlen(ESP_LUA_RAM_FILE_PATH)]);
+        char *buf = (char *)ramf->data;
+        int read_len = esp_http_client_read(client, buf, content_length);
+        if (read_len <= 0) {
+            ESP_LOGE(TAG, "Error read data");
+            esp_http_client_cleanup(client);
+            return -1;
+        }
+        buf[read_len] = 0;
+        ramf->size = read_len;
+
+        ESP_LOGI(TAG, "HTTP Stream reader Status = %d, content_length = %d",
+                        esp_http_client_get_status_code(client),
+                        esp_http_client_get_content_length(client));
+        esp_http_client_cleanup(client);
+
+        return read_len;
+    }
+
     FILE* f = fopen(file, "w");
     if (f == NULL) {
         ESP_LOGE(TAG, "Failed to open file for writing");
