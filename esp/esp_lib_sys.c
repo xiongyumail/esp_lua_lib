@@ -391,6 +391,30 @@ static int sys_info(lua_State *L)
 {
     lua_newtable(L);
 
+#if CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS
+    char *PA = NULL;
+    char *PB = NULL;
+    char *cpu_info  = (char *)malloc(1024);
+    vTaskGetRunTimeStats(cpu_info);
+
+    PA = strstr(cpu_info, "IDLE0");
+    if (PA) {
+        PB = strstr(PA, "\t\t");
+        if (PB) {
+            PB = PB + strlen("\t\t");
+            PA = strstr(PB, "\r\n");
+            if (PA) {
+                PB[PA-PB] = 0;
+                lua_pushstring(L, "cpu");
+                lua_pushinteger(L, 100 - atoi(PB));
+                lua_settable(L,-3);
+            }
+        }
+    }
+    
+    free(cpu_info);
+#endif
+
     lua_pushstring(L, "total_heap");
     lua_pushinteger(L, esp_get_free_heap_size());
     lua_settable(L,-3);
