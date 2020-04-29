@@ -391,30 +391,6 @@ static int sys_info(lua_State *L)
 {
     lua_newtable(L);
 
-#if CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS
-    char *PA = NULL;
-    char *PB = NULL;
-    char *cpu_info  = (char *)malloc(1024);
-    vTaskGetRunTimeStats(cpu_info);
-
-    PA = strstr(cpu_info, "IDLE0");
-    if (PA) {
-        PB = strstr(PA, "\t\t");
-        if (PB) {
-            PB = PB + strlen("\t\t");
-            PA = strstr(PB, "\r\n");
-            if (PA) {
-                PB[PA-PB] = 0;
-                lua_pushstring(L, "cpu");
-                lua_pushinteger(L, 100 - atoi(PB));
-                lua_settable(L,-3);
-            }
-        }
-    }
-    
-    free(cpu_info);
-#endif
-
     lua_pushstring(L, "total_heap");
     lua_pushinteger(L, esp_get_free_heap_size());
     lua_settable(L,-3);
@@ -437,6 +413,120 @@ static int sys_info(lua_State *L)
         lua_pushstring(L, running_app_info.version);
         lua_settable(L,-3);
     }
+
+    return 1;
+}
+
+#define ARRAY_SIZE_OFFSET   5   //Increase this if print_real_time_stats returns ESP_ERR_INVALID_SIZE
+
+static int sys_get_cpu_stats(lua_State *L, TickType_t xTicksToWait)
+{
+    TaskStatus_t *start_array = NULL, *end_array = NULL;
+    UBaseType_t start_array_size, end_array_size;
+    uint32_t start_run_time, end_run_time;
+    int ret;
+
+    //Allocate array to store current task states
+    start_array_size = uxTaskGetNumberOfTasks() + ARRAY_SIZE_OFFSET;
+    start_array = malloc(sizeof(TaskStatus_t) * start_array_size);
+    if (start_array == NULL) {
+        ret = -1;
+        goto exit;
+    }
+    //Get current task states
+    start_array_size = uxTaskGetSystemState(start_array, start_array_size, &start_run_time);
+    if (start_array_size == 0) {
+        ret = -1;
+        goto exit;
+    }
+
+    vTaskDelay(xTicksToWait);
+
+    //Allocate array to store tasks states post delay
+    end_array_size = uxTaskGetNumberOfTasks() + ARRAY_SIZE_OFFSET;
+    end_array = malloc(sizeof(TaskStatus_t) * end_array_size);
+    if (end_array == NULL) {
+        ret = -1;
+        goto exit;
+    }
+    //Get post delay task states
+    end_array_size = uxTaskGetSystemState(end_array, end_array_size, &end_run_time);
+    if (end_array_size == 0) {
+        ret = -1;
+        goto exit;
+    }
+
+    //Calculate total_elapsed_time in units of run time stats clock period.
+    uint32_t total_elapsed_time = (end_run_time - start_run_time);
+    if (total_elapsed_time == 0) {
+        ret = -1;
+        goto exit;
+    }
+
+    lua_newtable(L);
+    // printf("| Task | Run Time | Percentage\n");
+    //Match each task in start_array to those in the end_array
+    for (int i = 0; i < start_array_size; i++) {
+        int k = -1;
+        for (int j = 0; j < end_array_size; j++) {
+            if (start_array[i].xHandle == end_array[j].xHandle) {
+                k = j;
+                //Mark that task have been matched by overwriting their handles
+                start_array[i].xHandle = NULL;
+                end_array[j].xHandle = NULL;
+                break;
+            }
+        }
+        //Check if matching task found
+        if (k >= 0) {
+            uint32_t task_elapsed_time = end_array[k].ulRunTimeCounter - start_array[i].ulRunTimeCounter;
+            uint32_t percentage_time = (task_elapsed_time * 100UL) / (total_elapsed_time * portNUM_PROCESSORS);
+            // printf("| %s | %d | %d%%\n", start_array[i].pcTaskName, task_elapsed_time, percentage_time);
+                lua_pushstring(L, start_array[i].pcTaskName);
+                lua_newtable(L);
+
+                lua_pushstring(L, "time");
+                lua_pushinteger(L, task_elapsed_time);
+                lua_settable(L,-3);
+
+                lua_pushstring(L, "load");
+                lua_pushinteger(L, percentage_time);
+                lua_settable(L,-3);
+
+                lua_settable(L,-3);
+        }
+    }
+
+    //Print unmatched tasks
+    for (int i = 0; i < start_array_size; i++) {
+        if (start_array[i].xHandle != NULL) {
+            printf("| %s | Deleted\n", start_array[i].pcTaskName);
+        }
+    }
+    for (int i = 0; i < end_array_size; i++) {
+        if (end_array[i].xHandle != NULL) {
+            printf("| %s | Created\n", end_array[i].pcTaskName);
+        }
+    }
+    ret = 0;
+
+exit:    //Common return path
+    free(start_array);
+    free(end_array);
+    return ret;
+}
+
+static int sys_stats(lua_State *L) 
+{
+    lua_gc(L, LUA_GCCOLLECT, 0); // collect memory
+#if CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS
+    if (sys_get_cpu_stats(L, pdMS_TO_TICKS((uint32_t)luaL_checknumber(L,1))) != 0) {
+        lua_pushboolean(L, false);
+    }
+#else
+    vTaskDelay(pdMS_TO_TICKS((uint32_t)luaL_checknumber(L,1)));
+    lua_pushboolean(L, false);
+#endif
 
     return 1;
 }
@@ -544,6 +634,7 @@ static const luaL_Reg syslib[] = {
     {"restart", sys_restart},
     {"md5sum", sys_md5sum},
     {"info", sys_info},
+    {"stats", sys_stats},
     {"spiffs_info", sys_spiffs_info},
     {"nvs_read", sys_nvs_read},
     {"nvs_write", sys_nvs_write},
