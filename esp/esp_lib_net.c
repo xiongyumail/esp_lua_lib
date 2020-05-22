@@ -101,14 +101,16 @@ static int wifi_init(wifi_mode_t mode)
     }
     ESP_ERROR_CHECK(esp_wifi_start());
 
-    tcpip_adapter_ip_info_t ip_info = {        
-        .ip.addr      = ipaddr_addr("192.168.1.1"),        
-        .netmask.addr = ipaddr_addr("255.255.255.0"),        
-        .gw.addr      = ipaddr_addr("192.168.1.1"),    
-    };    
-    ESP_ERROR_CHECK(tcpip_adapter_dhcps_stop(TCPIP_ADAPTER_IF_AP));    
-    ESP_ERROR_CHECK(tcpip_adapter_set_ip_info(TCPIP_ADAPTER_IF_AP, &ip_info));    
-    ESP_ERROR_CHECK(tcpip_adapter_dhcps_start(TCPIP_ADAPTER_IF_AP));
+    if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) {
+        tcpip_adapter_ip_info_t ip_info = {        
+            .ip.addr      = ipaddr_addr("192.168.1.1"),        
+            .netmask.addr = ipaddr_addr("255.255.255.0"),        
+            .gw.addr      = ipaddr_addr("192.168.1.1"),    
+        };    
+        ESP_ERROR_CHECK(tcpip_adapter_dhcps_stop(TCPIP_ADAPTER_IF_AP));    
+        ESP_ERROR_CHECK(tcpip_adapter_set_ip_info(TCPIP_ADAPTER_IF_AP, &ip_info));    
+        ESP_ERROR_CHECK(tcpip_adapter_dhcps_start(TCPIP_ADAPTER_IF_AP));
+    }
 
     ESP_LOGI(TAG, "wifi_init finished.");
 
