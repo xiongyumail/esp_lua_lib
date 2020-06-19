@@ -412,6 +412,9 @@ static int sys_info(lua_State *L)
         lua_pushstring(L, "version");
         lua_pushstring(L, running_app_info.version);
         lua_settable(L,-3);
+        lua_pushstring(L, "lable");
+        lua_pushstring(L, running->label);
+        lua_settable(L,-3);
     }
 
     return 1;
