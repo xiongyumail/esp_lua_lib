@@ -5,7 +5,7 @@ local wifi = { _version = "0.1.0" }
 function wifi.start_ap(ssid, passwd)
     net.ap(ssid, passwd)
     net.start('AP')
-    httpd.start('clock')
+    httpd.start(ssid)
 
     while (1) do
         local handle = httpd.run()
