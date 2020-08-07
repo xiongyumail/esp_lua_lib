@@ -245,7 +245,7 @@ static int sys_init(lua_State *L)
 
     esp_task_wdt_init(5, true);
 
-    linenoiseHistoryLoad(ESP_LUA_HISTORY_PATH);
+    lua_linenoiseHistoryLoad(ESP_LUA_HISTORY_PATH);
 
     state = 1;
 
@@ -337,7 +337,7 @@ static int sys_sntp(lua_State *L)
 
 static int sys_restart(lua_State *L) 
 {
-    linenoiseHistorySave(ESP_LUA_HISTORY_PATH);
+    lua_linenoiseHistorySave(ESP_LUA_HISTORY_PATH);
     esp_restart();
     return 0;
 }
